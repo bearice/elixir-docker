@@ -14,15 +14,83 @@ defmodule Docker do
     defstruct id: nil, reply: nil
   end
 
-  def containers(srv) do
-    GenServer.call(srv, {:sync_req, :get, "/containers/json", nil})
-  end
-  def create(srv, body) do
-    GenServer.call(srv, {:sync_req, :post, "/containers/create", body})
-  end
-  def start(srv, opts) do
-    GenServer.call(srv, {:sync_req, :post, "/containers/#{}/start", nil})
-  end
+  defmodule Container do
+    @derive [Access,Collectable]
+    defstruct id: "", server: nil
+
+    def list(srv) do
+      case GenServer.call(srv, {:sync_req, :get, "/containers/json", nil}) do
+        {:ok, list} ->
+          Enum.map list, &(from_json(srv,&1))
+        {:error, err} ->
+          Logger.error err
+          raise err
+      end
+    end
+    def create(srv, body) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/create", body})
+    end
+
+    def start(%Container{server: srv, id: id}), do: start(srv, id)
+    def start(srv, id) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/start", nil})
+    end
+
+    def stop(%Container{server: srv, id: id}), do: stop(srv, id)
+    def stop(srv, id) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/stop", nil})
+    end
+
+    def restart(%Container{server: srv, id: id}), do: restart(srv, id)
+    def restart(srv, id) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/restart", nil})
+    end
+
+    def kill(%Container{server: srv, id: id}), do: kill(srv, id)
+    def kill(srv, id) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/kill", nil})
+    end
+
+    def pause(%Container{server: srv, id: id}), do: pause(srv, id)
+    def pause(srv, id) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/pause", nil})
+    end
+
+    def unpause(%Container{server: srv, id: id}), do: unpause(srv, id)
+    def unpause(srv, id) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/unpause", nil})
+    end
+
+    def inspect(%Container{server: srv, id: id}), do: inspect(srv, id)
+    def inspect(srv,id) do
+      GenServer.call(srv, {:sync_req, :get, "/containers/#{id}/json", nil})
+    end
+
+    def wait(%Container{server: srv, id: id}), do: wait(srv, id)
+    def wait(srv,id) do
+      GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/wait", nil})
+    end
+
+    def delete(%Container{server: srv, id: id}), do: delete(srv, id)
+    def delete(srv,id) do
+      GenServer.call(srv, {:sync_req, :delete, "/containers/#{id}", nil})
+    end
+
+    def logs(%Container{server: srv, id: id}), do: logs(srv, id)
+    def logs(srv,id) do
+      GenServer.call(srv, {:sync_req, :get, "/containers/#{id}/logs", nil})
+    end
+
+    def top(%Container{server: srv, id: id}), do: top(srv, id)
+    def top(srv,id) do
+      GenServer.call(srv, {:sync_req, :get, "/containers/#{id}/top", nil})
+    end
+
+    def from_json(srv,json) do
+      Enum.into(json, %Container{id: json["Id"], server: srv})
+    end
+  end #defmodule Container
+
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__,opts)
@@ -100,10 +168,10 @@ defmodule Docker do
       options: mkopts(ctx, []),
       from: from,
     }
-    %AsyncResponse{id: id} = HTTPoison.request!(
-      req.method, req.url, req.body, req.headers, req.options
-    )
-    :ets.insert ctx.requests, {id, req, %{body: ""}}
+  %AsyncResponse{id: id} = HTTPoison.request!(
+  req.method, req.url, req.body, req.headers, req.options
+  )
+  :ets.insert ctx.requests, {id, req, %{body: ""}}
   end
 
   defp update_resp(ctx, id, field, value, fun \\ nil) do
