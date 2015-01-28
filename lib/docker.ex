@@ -21,7 +21,7 @@ defmodule Docker do
     def list(srv) do
       case GenServer.call(srv, {:sync_req, :get, "/containers/json", nil}) do
         {:ok, list} ->
-          Enum.map list, &(from_json(srv,&1))
+          {:ok, Enum.map(list, &(from_json(srv,&1))) }
         {:error, err} ->
           Logger.error err
           raise err
@@ -102,7 +102,7 @@ defmodule Docker do
     def list(srv) do
       case GenServer.call(srv, {:sync_req, :get, "/images/json", nil}) do
         {:ok, list} ->
-          Enum.map list, &(from_json(srv,&1))
+          {:ok,Enum.map(list, &(from_json(srv,&1)))}
         {:error, err} ->
           Logger.error err
           raise err
@@ -131,6 +131,10 @@ defmodule Docker do
     def from_json(srv,json) do
       Enum.into(json, %Container{id: json["Id"], server: srv})
     end
+  end
+
+  def info(srv) do
+    GenServer.call(srv, {:sync_req, :get, "/info", nil})
   end
 
   def start_link(opts) do
@@ -217,7 +221,7 @@ defmodule Docker do
       body = ""
       headers = []
     end
-    Logger.debug "#{method} #{url} #{body}"
+    #Logger.debug "#{method} #{url} #{body}"
     req = %{
       method: method,
       url: url,
@@ -256,10 +260,10 @@ defmodule Docker do
   end
 
   defp process_resp(ctx, req, resp) do
-    IO.inspect resp
+    #IO.inspect resp
     case resp do
       %{status_code: code, body: body} ->
-        Logger.debug "get #{code}"
+        #Logger.debug "get #{code}"
         try do
           reply req.from, {:ok, JSX.decode!(body)}
         rescue
