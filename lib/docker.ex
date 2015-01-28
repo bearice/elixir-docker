@@ -61,8 +61,8 @@ defmodule Docker do
       GenServer.call(srv, {:sync_req, :post, "/containers/#{id}/unpause", nil})
     end
 
-    def inspect(%Container{server: srv, id: id}), do: inspect(srv, id)
-    def inspect(srv,id) do
+    def info(%Container{server: srv, id: id}), do: info(srv, id)
+    def info(srv,id) do
       GenServer.call(srv, {:sync_req, :get, "/containers/#{id}/json", nil})
     end
 
@@ -86,23 +86,81 @@ defmodule Docker do
       GenServer.call(srv, {:sync_req, :get, "/containers/#{id}/top", nil})
     end
 
+    #TODO stream apis
+    #def attach(srv, id) do
+    #  GenServer.call(srv, {:async_req, :post, "/containers/#{id}/attach", nil})
+    #end
+
     def from_json(srv,json) do
       Enum.into(json, %Container{id: json["Id"], server: srv})
     end
   end #defmodule Container
 
+  defmodule Image do
+    @derive [Access,Collectable]
+    defstruct id: "", server: nil
+    def list(srv) do
+      case GenServer.call(srv, {:sync_req, :get, "/images/json", nil}) do
+        {:ok, list} ->
+          Enum.map list, &(from_json(srv,&1))
+        {:error, err} ->
+          Logger.error err
+          raise err
+      end
+    end
+
+    #TODO stream output
+    def pull(srv,id) do
+      GenServer.call(srv, {:sync_req, :post, "/images/create", [fromImage: id], nil})
+    end
+
+    def info(%Image{server: srv, id: id}), do: info(srv, id)
+    def info(srv,id) do
+      GenServer.call(srv, {:sync_req, :get, "/images/#{id}/json", nil})
+    end
+
+    def history(%Image{server: srv, id: id}), do: history(srv, id)
+    def history(srv,id) do
+      GenServer.call(srv, {:sync_req, :get, "/images/#{id}/history", nil})
+    end
+
+    def push(srv,id) do
+      GenServer.call(srv, {:sync_req, :get, "/images/#{id}/push", nil})
+    end
+
+    def from_json(srv,json) do
+      Enum.into(json, %Container{id: json["Id"], server: srv})
+    end
+  end
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__,opts)
   end
+
   def init(opts) do
     table = :ets.new :requests, [:set, :private]
     {:ok, Enum.into(opts, %{:requests => table})}
   end
+
+  def handle_call({type, method, path, query, body}, from, ctx) do
+      path = path <> "?" <> URI.encode_query(query)
+      handle_call({type, method, path, body}, from, ctx)
+  end
+
   def handle_call({:sync_req, method, path, body}, from, ctx) do
     try do
       mkreq ctx, method, path, body, {:sync_req, from}
       {:noreply,ctx}
+    rescue
+      e -> {:reply,{:error,e},ctx}
+    end
+  end
+
+  def handle_call({:async_req, method, path, body}, from, ctx) do
+    try do
+      id = make_ref
+      mkreq ctx, method, path, body, {:async_req, id, from}
+      {:reply, {:ok, id}, ctx}
     rescue
       e -> {:reply,{:error,e},ctx}
     end
@@ -168,10 +226,8 @@ defmodule Docker do
       options: mkopts(ctx, []),
       from: from,
     }
-  %AsyncResponse{id: id} = HTTPoison.request!(
-  req.method, req.url, req.body, req.headers, req.options
-  )
-  :ets.insert ctx.requests, {id, req, %{body: ""}}
+    %AsyncResponse{id: id} = HTTPoison.request!(req.method, req.url, req.body, req.headers, req.options)
+    :ets.insert ctx.requests, {id, req, %{body: ""}}
   end
 
   defp update_resp(ctx, id, field, value, fun \\ nil) do
@@ -213,5 +269,4 @@ defmodule Docker do
         end
     end
   end
-
 end
