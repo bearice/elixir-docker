@@ -52,6 +52,9 @@ defmodule Docker do
     def raw(r) do
       %{r | format: :raw}
     end
+    def stream_to(r,pid) do
+      %{r | mode: :stream, stream_to: pid}
+    end
   end #defmodule Request
 
   defmodule Container do
@@ -122,9 +125,9 @@ defmodule Docker do
     end
 
     def wait(%Container{server: srv, id: id}), do: wait(srv, id)
-    def wait(srv,id) do
+    def wait(srv,id, timeout \\ :infinity) do
       req = Request.post "/containers/#{id}/wait"
-      GenServer.call(srv, req)
+      GenServer.call(srv, req, timeout)
     end
 
     def delete(%Container{server: srv, id: id}), do: delete(srv, id)
@@ -134,10 +137,18 @@ defmodule Docker do
     end
 
     def logs(%Container{server: srv, id: id}), do: logs(srv, id)
-    def logs(srv, id, query \\ %{stdin: true, stdout: true, follow: false, timestamp: false}) do
+    def logs(srv, id, query \\ %{stderr: true, stdout: true, follow: false, timestamp: false}) do
       req = Request.get("/containers/#{id}/logs")
          |> Request.query(query)
          |> Request.packed
+      GenServer.call(srv, req)
+    end
+
+    def follow(srv, id, query \\ %{stderr: true, stdout: true, follow: true, timestamp: false},pid\\self) do
+      req = Request.get("/containers/#{id}/logs")
+         |> Request.query(query)
+         |> Request.packed
+         |> Request.stream_to(pid)
       GenServer.call(srv, req)
     end
 
@@ -264,14 +275,31 @@ defmodule Docker do
     {:noreply,ctx}
   end
   def handle_info({:hackney_response, id, chunk}, ctx) when is_binary(chunk) do
-    lookup_resp(ctx, id, fn(req, resp) ->
+    lookup_resp ctx, id, fn(req, resp) ->
       if req.mode == :stream and resp.status_code in 200..299 do
-        reply req, {:chunk, chunk}
+        case req.format do
+          :packed ->
+            try do
+              {rest, packets} = parse_packed resp.body <> chunk, []
+              resp = %{resp|body: rest}
+              :ets.insert ctx.requests, {id,req,resp}
+              if length(packets) != 0 do
+                reply req, {:chunk, packets}
+              end
+            rescue e ->
+              reply req, {:error, e}
+            end
+          :raw ->
+            reply req, {:chunk, chunk}
+          :json ->
+            #Logger.warn "JSON decoding not supported in stream mode"
+            reply req, {:chunk, chunk}
+        end
       else
         resp = %{resp|body: resp.body <> chunk}
         :ets.insert ctx.requests, {id,req,resp}
       end
-    end)
+    end
     {:noreply,ctx}
   end
 
