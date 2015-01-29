@@ -14,14 +14,14 @@ defmodule Docker.Mixfile do
     [applications: [
         :logger,
         :exjsx,
-        :httpoison,
+        :hackney,
     ]]
   end
 
   defp deps do
     [
       {:exjsx, "~> 3.0"},
-      {:httpoison, "~> 0.5.0"},
+      {:hackney, "~> 1.0.6"},
     ]
   end
 
