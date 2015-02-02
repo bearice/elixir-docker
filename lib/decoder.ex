@@ -28,20 +28,14 @@ defmodule Docker.JsonDecoder do
     JSX.decode!(chunk)
   end
 
-  def flush!(chunk), do: decode! chunk
-
-  def decode_chunk!(chunk,last) do
-    bytes = last <> chunk
-    lines = String.split bytes, ~r{\n}, trim: true
-    if not String.ends_with bytes,"\n" do
-      {lines,[last]} = Enum.split lines,-1
-    end
-    objs = Enum.map lines, &decode!/1
-    if length(objs) == 0 do
-      objs = nil
-    end
-    {objs,last}
+  #based on facts that docker sends one JSON object in a chunk,
+  #if this is changed, this will fail.
+  def decode_chunk!(chunk,"") do
+    {decode!(chunk),""}
   end
+
+  def flush!(""), do: nil
+  def flush!(chunk), do: decode! chunk
 end
 
 defmodule Docker.PackedDecoder do
@@ -59,7 +53,9 @@ defmodule Docker.PackedDecoder do
     end
   end
   def flush!(""), do: nil
-  def flush!(_), do: raise ArgumentError
+  def flush!(_) do
+    raise ArgumentError
+  end
 
   def _decode(<<type,0,0,0,size :: integer-big-size(32),rest :: binary>>=packet, acc) do
     if size <= byte_size(rest) do
