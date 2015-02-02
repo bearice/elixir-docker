@@ -64,6 +64,14 @@ defmodule Docker do
     GenServer.call(srv, req)
   end
 
+  def monitor(srv, query \\ %{}, pid \\ self) do
+    req = Request.get("/events")
+       |> Request.query(query)
+       |> Request.json
+       |> Request.stream_to(pid)
+    GenServer.call(srv, req)
+  end
+
   def start_link(opts) do
     GenServer.start_link(__MODULE__,opts)
   end
@@ -133,6 +141,11 @@ defmodule Docker do
             reply req, {:chunk, objs}
           end
         rescue e ->
+          Logger.error """
+          Unexpected Error, Response = #{inspect resp}
+          #{Exception.message e}
+          #{Exception.format_stacktrace System.stacktrace}
+          """
           reply req, {:error, e}
         end
       else
@@ -236,6 +249,10 @@ defmodule Docker do
   defp process_resp(%Request{mode: :stream} = req, resp) do
     case resp.status_code do
       code when code in 200..299 ->
+        last_chunk = req.format.flush! resp.body
+        if last_chunk do
+          reply req, {:chunk, last_chunk}
+        end
         reply req, :done
       code ->
         reply req, {:error, {:servfail, code, resp.body}}

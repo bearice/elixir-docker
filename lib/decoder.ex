@@ -9,6 +9,8 @@ defmodule Docker.Decoder do
     decode a chunk, return list of objects and decode status
   """
   defcallback decode_chunk!(chunk :: String.t, last :: any) :: {any,any}
+
+  defcallback flush!(status :: any) :: any
 end
 
 defmodule Docker.RawDecoder do
@@ -16,39 +18,30 @@ defmodule Docker.RawDecoder do
 
   def decode!(chunk), do: chunk
   def decode_chunk!(chunk,_), do: {chunk, nil}
+  def flush!(_), do: nil
 end
 
 defmodule Docker.JsonDecoder do
   @behaviour Docker.Decoder
 
   def decode!(chunk) do
-    case :jsx.decoder(JSX.Decoder, [:return_maps], []).(chunk) do
-      { :incomplete, _ } -> raise ArgumentError
-      result -> result
-    end
+    JSX.decode!(chunk)
   end
 
-  def decode_chunk!(chunk,""), do: decode_chunk!(chunk,new_decoder)
-  def decode_chunk!(chunk,next) do
-    {objs, new_next} = chunk
-      |>String.split(~r{\r?\n}, trim: true)
-      |>Enum.map_reduce(next, fn(fun, line) ->
-          case fun.(line) do
-            {:incomplete, cont} -> {nil, cont}
-            result -> {result, new_decoder}
-          end
-        end)
-    objs = Enum.filter objs, &(&1!=nil)
+  def flush!(chunk), do: decode! chunk
+
+  def decode_chunk!(chunk,last) do
+    bytes = last <> chunk
+    lines = String.split bytes, ~r{\n}, trim: true
+    if not String.ends_with bytes,"\n" do
+      {lines,[last]} = Enum.split lines,-1
+    end
+    objs = Enum.map lines, &decode!/1
     if length(objs) == 0 do
       objs = nil
     end
-    {objs,new_next}
+    {objs,last}
   end
-
-  def new_decoder() do
-    decoder = :jsx.decoder(JSX.Decoder, [:return_maps], [:stream])
-  end
-
 end
 
 defmodule Docker.PackedDecoder do
@@ -65,6 +58,9 @@ defmodule Docker.PackedDecoder do
       result -> result
     end
   end
+  def flush!(""), do: nil
+  def flush!(_), do: raise ArgumentError
+
   def _decode(<<type,0,0,0,size :: integer-big-size(32),rest :: binary>>=packet, acc) do
     if size <= byte_size(rest) do
       <<data :: binary-size(size), rest0 :: binary>> = rest
