@@ -1,8 +1,6 @@
 Docker API binding in Elixir
 ===
 
-Warining: this ia a UNSTABLE version, and APIs would be change quickly
-
 example:
 ```elixir
 require Logger
