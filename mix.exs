@@ -34,7 +34,7 @@ defmodule Docker.Mixfile do
   defp package do
     [
       licenses: ["MIT"],
-      contributors: ["Bearice Ren"],
+      maintainers: ["Bearice Ren"],
       links: %{"Github" => "https://github.com/bearice/elixir-docker"}
     ]
   end
