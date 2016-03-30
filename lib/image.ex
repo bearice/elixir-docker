@@ -2,7 +2,6 @@ defmodule Docker.Image do
   alias Docker.Image
   alias Docker.Request
 
-  @derive [Access,Collectable]
   defstruct id: "", server: nil
   def list(srv) do
     req = Request.get "/images/json"

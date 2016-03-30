@@ -2,7 +2,6 @@ defmodule Docker.Container do
   alias Docker.Container
   alias Docker.Request
 
-  @derive [Access,Collectable]
   defstruct id: "", server: nil
 
   def list(srv) do
