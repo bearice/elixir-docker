@@ -216,7 +216,7 @@ defmodule Docker do
         :ets.insert ctx.requests, {id, req, %{body: ""}}
         {:ok, id}
       {:error, e} ->
-        raise e
+        raise inspect e
     end
   end
 
